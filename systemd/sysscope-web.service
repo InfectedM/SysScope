@@ -1,0 +1,14 @@
+[Unit]
+Description=SysScope web dashboard
+After=sysscope-collector.service
+
+[Service]
+Type=simple
+User=infectedserver
+WorkingDirectory=/opt/sysscope
+ExecStart=/opt/sysscope/.venv/bin/python -m sysscope.web.app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

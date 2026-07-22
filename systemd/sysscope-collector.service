@@ -1,0 +1,15 @@
+[Unit]
+Description=SysScope collector (root)
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sysscope
+ExecStart=/opt/sysscope/.venv/bin/python -m sysscope.collector.main
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
