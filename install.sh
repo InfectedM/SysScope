@@ -5,6 +5,11 @@ set -euo pipefail
 DEST=/opt/sysscope
 USER_NAME=${SUDO_USER:-$(whoami)}
 
+if [[ $(id -u) -eq 0 && -z "${SUDO_USER:-}" ]]; then
+  echo "Corre este script com sudo a partir do teu utilizador normal, não como root direto." >&2
+  exit 1
+fi
+
 echo "==> A instalar dependências de sistema (tracers)"
 sudo apt-get update
 sudo apt-get install -y fatrace hdparm smartmontools python3-venv

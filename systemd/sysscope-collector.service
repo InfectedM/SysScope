@@ -10,6 +10,7 @@ WorkingDirectory=/opt/sysscope
 ExecStart=/opt/sysscope/.venv/bin/python -m sysscope.collector.main
 Restart=on-failure
 RestartSec=5
+UMask=0022
 
 [Install]
 WantedBy=multi-user.target
