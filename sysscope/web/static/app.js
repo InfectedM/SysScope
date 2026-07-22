@@ -1,5 +1,10 @@
 "use strict";
 
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
 function fmtBytes(bps) {
   if (bps < 1024) return bps.toFixed(0) + " B/s";
   if (bps < 1024 * 1024) return (bps / 1024).toFixed(1) + " KB/s";
@@ -17,12 +22,13 @@ function renderDisks(disks) {
   for (const d of disks) {
     const spun = (d.power_state === "standby" || d.power_state === "sleeping");
     const stateLabel = spun ? "adormecido" :
-      (d.power_state === "active" ? "ativo" : d.power_state);
+      (d.power_state === "active" ? "ativo" :
+       d.power_state === "unknown" ? "desconhecido" : d.power_state);
     const card = document.createElement("div");
     card.className = "card";
     card.innerHTML = `
-      <div class="name">${d.disk}</div>
-      <span class="state ${d.power_state}">${stateLabel}</span>
+      <div class="name">${esc(d.disk)}</div>
+      <span class="state ${d.power_state}">${esc(stateLabel)}</span>
       <div class="io">
         leitura: ${fmtBytes(d.read_bps)}<br>
         escrita: ${fmtBytes(d.write_bps)}
@@ -40,15 +46,16 @@ async function loadIncidents() {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${fmtTime(r.ts)}</td>
-      <td>${r.disk}</td>
-      <td>${r.detection}</td>
-      <td class="culprit">${r.top_culprit || "…"}</td>`;
+      <td>${esc(r.disk)}</td>
+      <td>${esc(r.detection)}</td>
+      <td class="culprit">${esc(r.top_culprit || "…")}</td>`;
     tb.appendChild(tr);
   }
 }
 
 function connectWs() {
-  const ws = new WebSocket(`ws://${location.host}/ws`);
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
   ws.onmessage = (ev) => {
     const data = JSON.parse(ev.data);
     renderDisks(data.disks);
