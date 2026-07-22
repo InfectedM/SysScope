@@ -1,0 +1,38 @@
+:root {
+  --bg: #0f0e17;
+  --panel: #1a1826;
+  --accent: #8b5cf6;
+  --accent-soft: #a78bfa;
+  --text: #e7e5f0;
+  --muted: #9d99b3;
+  --active: #34d399;
+  --standby: #6b7280;
+  --border: #2a2740;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: "Outfit", system-ui, sans-serif;
+}
+header { max-width: 1100px; margin: 0 auto; padding: 32px 24px 8px; }
+h1 { font-size: 30px; font-weight: 700; margin: 0; letter-spacing: -0.5px; }
+h1 span { color: var(--accent); }
+.sub { color: var(--muted); margin: 4px 0 0; }
+main { max-width: 1100px; margin: 0 auto; padding: 16px 24px 64px; }
+.panel {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 16px; padding: 20px 24px; margin-top: 24px;
+}
+.panel h2 { font-size: 18px; font-weight: 600; margin: 0 0 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.card .name { font-weight: 600; font-size: 16px; }
+.card .state { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-top: 8px; }
+.state.active { background: rgba(52,211,153,.15); color: var(--active); }
+.state.standby, .state.sleeping { background: rgba(107,114,128,.2); color: var(--standby); }
+.state.unknown { background: rgba(139,92,246,.15); color: var(--accent-soft); }
+.card .io { color: var(--muted); font-size: 13px; margin-top: 10px; line-height: 1.6; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; }
+td .culprit { color: var(--accent-soft); font-weight: 600; }
