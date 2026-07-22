@@ -53,6 +53,49 @@ async function loadIncidents() {
   }
 }
 
+function fmtPct(p) { return (p ?? 0).toFixed(1) + "%"; }
+
+async function loadServices() {
+  const [svc, cont] = await Promise.all([
+    fetch("/api/services").then(r => r.json()),
+    fetch("/api/containers").then(r => r.json()),
+  ]);
+  const sum = document.getElementById("services-summary");
+  const failed = (svc.failed || []);
+  sum.innerHTML = `${svc.active ?? 0} ativos de ${svc.total ?? 0} serviços · ` +
+    (failed.length ? `<span style="color:#f87171">${failed.length} falhados: ${esc(failed.join(", "))}</span>` : "sem falhas");
+  const tb = document.querySelector("#containers-table tbody");
+  tb.innerHTML = "";
+  cont.sort((a, b) => (b.blk_read + b.blk_write) - (a.blk_read + a.blk_write));
+  for (const c of cont) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(c.name)}</td><td>${fmtPct(c.cpu_pct)}</td>` +
+      `<td>${fmtBytes(c.mem_used)}</td>` +
+      `<td>${fmtBytes(c.net_rx)} / ${fmtBytes(c.net_tx)}</td>` +
+      `<td>${fmtBytes(c.blk_read)} / ${fmtBytes(c.blk_write)}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+async function loadNetwork() {
+  const net = await fetch("/api/network").then(r => r.json());
+  const nt = document.querySelector("#net-table tbody");
+  nt.innerHTML = "";
+  for (const i of (net.interfaces || [])) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(i.iface)}</td><td>${fmtBytes(i.rx_bps)}/s</td><td>${fmtBytes(i.tx_bps)}/s</td>`;
+    nt.appendChild(tr);
+  }
+  const ct = document.querySelector("#conn-table tbody");
+  ct.innerHTML = "";
+  for (const c of (net.connections || []).slice(0, 100)) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(c.proto)}</td><td>${esc(c.state)}</td>` +
+      `<td>${esc(c.local)}</td><td>${esc(c.remote)}</td><td>${esc(c.process || "—")}</td>`;
+    ct.appendChild(tr);
+  }
+}
+
 function connectWs() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
@@ -67,8 +110,12 @@ async function init() {
   const res = await fetch("/api/disks");
   renderDisks(await res.json());
   await loadIncidents();
+  await loadServices();
+  await loadNetwork();
   connectWs();
   setInterval(loadIncidents, 10000);
+  setInterval(loadServices, 5000);
+  setInterval(loadNetwork, 5000);
 }
 
 init();
