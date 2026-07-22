@@ -27,30 +27,41 @@ def _read_diskstats() -> str:
         return f.read()
 
 
-def _fatrace_loop(cfg: Config, io: IoAttribution, resolver: ContainerResolver) -> None:
-    """Lê o stream do fatrace e regista acessos aos discos-alvo."""
-    proc = subprocess.Popen(
-        ["fatrace", "--timestamp"], stdout=subprocess.PIPE, text=True,
-        bufsize=1,
-    )
+def _fatrace_loop(proc: subprocess.Popen, cfg: Config, io: IoAttribution,
+                   resolver: ContainerResolver) -> None:
+    """Lê o stream do fatrace e regista acessos aos discos-alvo.
+
+    O `proc` é criado e terminado por `run()`, para que o encerramento não
+    dependa de uma nova linha chegar a este iterador (que pode bloquear
+    indefinidamente num stream fatrace inativo).
+    """
     assert proc.stdout is not None
-    for line in proc.stdout:
-        if _stop.is_set():
-            break
-        # `fatrace --timestamp` prefixa "HH:MM:SS.ffffff "; retiramos o prefixo.
-        payload = line.split(" ", 1)[1] if line[:2].isdigit() else line
-        ev = parse_fatrace_line(payload)
-        if ev is None:
-            continue
-        disk = event_disk(ev.path, cfg.disks)
-        if disk is None:
-            continue
-        io.record(AttributedEvent(
-            ts=time.time(), disk=disk, pid=ev.pid, comm=ev.comm,
-            container=resolver.name_for_pid(ev.pid),
-            op=op_from_types(ev.types), path=ev.path, source="fatrace",
-        ))
-    proc.terminate()
+    try:
+        for line in proc.stdout:
+            if _stop.is_set():
+                break
+            try:
+                # `fatrace --timestamp` prefixa "HH:MM:SS.ffffff "; retiramos o prefixo.
+                payload = line.split(" ", 1)[1] if line[:2].isdigit() else line
+                ev = parse_fatrace_line(payload)
+                if ev is None:
+                    continue
+                disk = event_disk(ev.path, cfg.disks)
+                if disk is None:
+                    continue
+                io.record(AttributedEvent(
+                    ts=time.time(), disk=disk, pid=ev.pid, comm=ev.comm,
+                    container=resolver.name_for_pid(ev.pid),
+                    op=op_from_types(ev.types), path=ev.path, source="fatrace",
+                ))
+            except Exception:
+                # Não deixar um erro numa linha isolada matar a thread inteira.
+                continue
+    finally:
+        # Garante que nunca ficamos com o processo fatrace órfão, mesmo que
+        # o loop acima rebente com uma exceção não prevista.
+        if proc.poll() is None:
+            proc.terminate()
 
 
 def run(cfg: Config, db: Database) -> None:
@@ -71,22 +82,40 @@ def run(cfg: Config, db: Database) -> None:
         diskstats_reader=_read_diskstats, clock=time.time,
     )
 
-    ft = threading.Thread(target=_fatrace_loop, args=(cfg, io, resolver), daemon=True)
+    fatrace_proc = subprocess.Popen(
+        ["fatrace", "--timestamp"], stdout=subprocess.PIPE, text=True,
+        bufsize=1,
+    )
+    ft = threading.Thread(
+        target=_fatrace_loop, args=(fatrace_proc, cfg, io, resolver), daemon=True,
+    )
     ft.start()
 
-    last_refresh = 0.0
-    last_purge = 0.0
-    while not _stop.is_set():
-        now = time.time()
-        collector.poll()
-        io.finalize_due(now)
-        if now - last_refresh > 30:
-            resolver.refresh()
-            last_refresh = now
-        if now - last_purge > 3600:
-            db.purge_older_than(now - cfg.retention_days * 86400)
-            last_purge = now
-        _stop.wait(cfg.sample_interval)
+    try:
+        last_refresh = 0.0
+        last_purge = 0.0
+        while not _stop.is_set():
+            now = time.time()
+            collector.poll()
+            io.finalize_due(now)
+            if now - last_refresh > 30:
+                resolver.refresh()
+                last_refresh = now
+            if now - last_purge > 3600:
+                db.purge_older_than(now - cfg.retention_days * 86400)
+                last_purge = now
+            _stop.wait(cfg.sample_interval)
+    finally:
+        # `_stop` já está definido; terminamos o fatrace explicitamente para
+        # desbloquear a thread caso esta esteja presa num stream inativo.
+        if fatrace_proc.poll() is None:
+            fatrace_proc.terminate()
+        try:
+            fatrace_proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            fatrace_proc.kill()
+            fatrace_proc.wait()
+        ft.join(timeout=2)
 
 
 def main() -> None:
