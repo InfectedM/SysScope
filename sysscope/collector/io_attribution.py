@@ -4,6 +4,15 @@ Mantém um buffer curto de eventos recentes (para backfill de acessos que
 precedem imediatamente o spin-up) e, para cada incidente aberto, acumula os
 acessos ao mesmo disco até `window` segundos depois. Ao expirar, persiste os
 eventos e calcula o culpado principal.
+
+O `backfill_horizon` controla até quando um evento antigo ainda é elegível
+para backfill num novo incidente: como a deteção baseada em energia só
+confirma o spin-up até `power_interval` segundos depois do acesso real que
+acordou o disco, um horizonte igual apenas a `window` (a janela de captura
+pós-deadline) perderia o culpado nesse caso — o evento já teria sido podado
+do buffer antes do incidente abrir. Por omissão `backfill_horizon == window`
+(comportamento anterior); o chamador deve passar
+`power_interval + incident_window` para cobrir a latência de deteção.
 """
 from __future__ import annotations
 
@@ -42,15 +51,16 @@ class _OpenIncident:
 
 
 class IoAttribution:
-    def __init__(self, db, window: float) -> None:
+    def __init__(self, db, window: float, backfill_horizon: float | None = None) -> None:
         self._db = db
         self._window = window
+        self._backfill_horizon = backfill_horizon if backfill_horizon is not None else window
         self._recent: deque[AttributedEvent] = deque()
         self._open: list[_OpenIncident] = []
 
     def record(self, ev: AttributedEvent) -> None:
         self._recent.append(ev)
-        cutoff = ev.ts - self._window
+        cutoff = ev.ts - self._backfill_horizon
         while self._recent and self._recent[0].ts < cutoff:
             self._recent.popleft()
         for inc in self._open:
@@ -59,7 +69,7 @@ class IoAttribution:
 
     def open_incident(self, incident_id: int, disk: str, ts: float) -> None:
         backfill = [e for e in self._recent
-                    if e.disk == disk and e.ts >= ts - self._window]
+                    if e.disk == disk and e.ts >= ts - self._backfill_horizon]
         self._open.append(_OpenIncident(
             incident_id=incident_id, disk=disk, ts=ts,
             deadline=ts + self._window, events=list(backfill),
@@ -77,3 +87,7 @@ class IoAttribution:
                     e.path, e.source, inc.incident_id)
             self._db.set_incident_culprit(inc.incident_id, top_culprit(inc.events))
         self._open = still_open
+
+    def flush_open(self) -> None:
+        """Finaliza todos os incidentes ainda abertos (usado no encerramento)."""
+        self.finalize_due(float("inf"))

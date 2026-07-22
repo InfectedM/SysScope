@@ -35,4 +35,4 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px 24px 64px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 500; }
-td .culprit { color: var(--accent-soft); font-weight: 600; }
+td.culprit { color: var(--accent-soft); font-weight: 600; }

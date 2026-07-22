@@ -67,7 +67,8 @@ def _fatrace_loop(proc: subprocess.Popen, cfg: Config, io: IoAttribution,
 def run(cfg: Config, db: Database) -> None:
     resolver = ContainerResolver()
     resolver.refresh()
-    io = IoAttribution(db, window=cfg.incident_window)
+    io = IoAttribution(db, window=cfg.incident_window,
+                        backfill_horizon=cfg.power_interval + cfg.incident_window)
 
     def on_spinup(ts: float, disk: str, detection: str) -> None:
         inc = db.create_incident(ts, disk, detection)
@@ -82,14 +83,22 @@ def run(cfg: Config, db: Database) -> None:
         diskstats_reader=_read_diskstats, clock=time.time,
     )
 
-    fatrace_proc = subprocess.Popen(
-        ["fatrace", "--timestamp"], stdout=subprocess.PIPE, text=True,
-        bufsize=1,
-    )
-    ft = threading.Thread(
-        target=_fatrace_loop, args=(fatrace_proc, cfg, io, resolver), daemon=True,
-    )
-    ft.start()
+    fatrace_proc: subprocess.Popen | None
+    try:
+        fatrace_proc = subprocess.Popen(
+            ["fatrace", "--timestamp"], stdout=subprocess.PIPE, text=True,
+            bufsize=1,
+        )
+    except OSError as e:
+        print("SysScope: fatrace indisponível, atribuição desativada:", e)
+        fatrace_proc = None
+
+    ft = None
+    if fatrace_proc is not None:
+        ft = threading.Thread(
+            target=_fatrace_loop, args=(fatrace_proc, cfg, io, resolver), daemon=True,
+        )
+        ft.start()
 
     try:
         last_refresh = 0.0
@@ -106,16 +115,21 @@ def run(cfg: Config, db: Database) -> None:
                 last_purge = now
             _stop.wait(cfg.sample_interval)
     finally:
+        # Persiste incidentes ainda abertos antes de terminar (SIGTERM pode
+        # chegar entre um spin-up e a sua deadline de captura).
+        io.flush_open()
         # `_stop` já está definido; terminamos o fatrace explicitamente para
         # desbloquear a thread caso esta esteja presa num stream inativo.
-        if fatrace_proc.poll() is None:
-            fatrace_proc.terminate()
-        try:
-            fatrace_proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            fatrace_proc.kill()
-            fatrace_proc.wait()
-        ft.join(timeout=2)
+        if fatrace_proc is not None:
+            if fatrace_proc.poll() is None:
+                fatrace_proc.terminate()
+            try:
+                fatrace_proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                fatrace_proc.kill()
+                fatrace_proc.wait()
+            if ft is not None:
+                ft.join(timeout=2)
 
 
 def main() -> None:

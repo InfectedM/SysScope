@@ -48,6 +48,7 @@ class Database:
         if read_only:
             uri = f"file:{path}?mode=ro"
             self._conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+            self._conn.execute("PRAGMA busy_timeout=5000")
         else:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(path, check_same_thread=False)
