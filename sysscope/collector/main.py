@@ -52,6 +52,10 @@ def run(cfg: Config, db: Database) -> None:
         diskstats_reader=_read_diskstats, clock=time.time,
     )
 
+    from sysscope.collector.services_collector import ServicesCollector
+    services = ServicesCollector(cfg, db, clock=time.time)
+    services_countdown = 0.0
+
     exclude_pids = frozenset({os.getpid()})
 
     try:
@@ -61,6 +65,10 @@ def run(cfg: Config, db: Database) -> None:
             now = time.time()
             active_disks.clear()
             collector.poll()
+            services_countdown -= cfg.sample_interval
+            if services_countdown <= 0:
+                services.poll()
+                services_countdown = cfg.services_interval
             scan_needed = bool(active_disks) or io.has_open_incidents()
             if scan_needed:
                 for of in scan_open_files(cfg.disks, exclude_pids=exclude_pids):

@@ -6,8 +6,8 @@ DISKS = [Disk("sde", "/dev/sde", "/media/HDD8TB", 8, 64)]
 
 def make_cfg(**kw):
     base = dict(disks=DISKS, db_path=":x:", web_host="127.0.0.1", web_port=1,
-                sample_interval=1.0, power_interval=1.0, idle_threshold=100.0,
-                incident_window=6.0, retention_days=14)
+                sample_interval=1.0, power_interval=1.0, services_interval=1.0,
+                idle_threshold=100.0, incident_window=6.0, retention_days=14)
     base.update(kw)
     return Config(**base)
 

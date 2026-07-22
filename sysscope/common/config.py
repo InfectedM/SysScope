@@ -23,6 +23,7 @@ class Config:
     web_port: int
     sample_interval: float   # segundos entre amostras de diskstats
     power_interval: float    # segundos entre sondagens hdparm -C
+    services_interval: float  # segundos entre sondagens de serviços/rede
     idle_threshold: float    # segundos sem I/O para considerar "possivelmente adormecido"
     incident_window: float   # segundos de acessos a guardar em redor de um spin-up
     retention_days: int
@@ -41,6 +42,7 @@ def default_config() -> Config:
         web_port=8787,
         sample_interval=2.0,
         power_interval=10.0,
+        services_interval=5.0,
         idle_threshold=120.0,
         incident_window=6.0,
         retention_days=14,
@@ -63,6 +65,7 @@ def load_config(path: str | None = None) -> Config:
         web_port=web.get("port", cfg.web_port),
         sample_interval=sampling.get("sample_interval", cfg.sample_interval),
         power_interval=sampling.get("power_interval", cfg.power_interval),
+        services_interval=sampling.get("services_interval", cfg.services_interval),
         idle_threshold=sampling.get("idle_threshold", cfg.idle_threshold),
         incident_window=sampling.get("incident_window", cfg.incident_window),
         retention_days=storage.get("retention_days", cfg.retention_days),
