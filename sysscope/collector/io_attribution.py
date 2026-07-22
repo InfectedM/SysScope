@@ -91,3 +91,6 @@ class IoAttribution:
     def flush_open(self) -> None:
         """Finaliza todos os incidentes ainda abertos (usado no encerramento)."""
         self.finalize_due(float("inf"))
+
+    def has_open_incidents(self) -> bool:
+        return bool(self._open)

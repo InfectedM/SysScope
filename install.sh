@@ -10,9 +10,9 @@ if [[ $(id -u) -eq 0 && -z "${SUDO_USER:-}" ]]; then
   exit 1
 fi
 
-echo "==> A instalar dependências de sistema (tracers)"
+echo "==> A instalar dependências de sistema"
 sudo apt-get update
-sudo apt-get install -y fatrace hdparm smartmontools python3-venv
+sudo apt-get install -y hdparm smartmontools python3-venv rsync
 
 echo "==> A copiar o projeto para $DEST"
 sudo mkdir -p "$DEST"
