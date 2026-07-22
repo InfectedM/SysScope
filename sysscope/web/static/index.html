@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SysScope</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/uplot.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Sys<span>Scope</span></h1>
+    <p class="sub">Monitorização de spin-up dos discos</p>
+  </header>
+
+  <main>
+    <section id="disks" class="panel">
+      <h2>Discos</h2>
+      <div id="disk-cards" class="cards"></div>
+    </section>
+
+    <section id="incidents" class="panel">
+      <h2>Incidentes de spin-up</h2>
+      <table id="incident-table">
+        <thead><tr><th>Quando</th><th>Disco</th><th>Deteção</th><th>Culpado</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/static/uplot.iife.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
