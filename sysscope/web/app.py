@@ -102,6 +102,21 @@ def create_app(
     def network_samples(iface: str, since: float = 0.0) -> list:
         return db.recent_net_samples(iface, since)
 
+    @app.get("/api/system")
+    def system() -> dict:
+        snap = db.get_snapshot("system")
+        return json.loads(snap["payload"]) if snap else {}
+
+    @app.get("/api/wakeups")
+    def wakeups_ep() -> dict:
+        snap = db.get_snapshot("wakeups")
+        return json.loads(snap["payload"]) if snap else {}
+
+    @app.get("/api/processes")
+    def processes() -> list:
+        snap = db.get_snapshot("processes")
+        return json.loads(snap["payload"]) if snap else []
+
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
         await sock.accept()

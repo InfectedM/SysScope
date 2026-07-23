@@ -1,85 +1,62 @@
 import os
-
 from sysscope.common.config import Disk
-from sysscope.collector.fdscan import OpenFile, scan_open_files
+from sysscope.collector.fdscan import (
+    OpenFile, disk_for_source, parse_mountinfo, scan_open_files,
+)
 
-DISKS = [
-    Disk("sde", "/dev/sde", "/media/HDD8TB", 8, 64),
-    Disk("sdd", "/dev/sdd", "/mnt/HDD2TB", 8, 48),
-]
+DISKS = [Disk("sde", "/dev/sde", "/media/HDD8TB", 8, 64),
+         Disk("sdb", "/dev/sdb", "/media/HDD3TB", 8, 16)]
 
-
-def _make_pid(proc_base, pid, comm, fd_targets):
-    """Cria um pid falso em proc_base com comm e fd/<n> -> symlinks para fd_targets."""
-    pdir = proc_base / str(pid)
-    pdir.mkdir()
-    (pdir / "comm").write_text(comm + "\n")
-    fddir = pdir / "fd"
-    fddir.mkdir()
-    for i, target in enumerate(fd_targets):
-        os.symlink(target, fddir / str(i))
+MOUNTINFO = (
+    "1616 1615 0:50 / / rw,relatime - overlay overlay rw,lowerdir=x\n"
+    "1848 1616 8:65 / /hdd8 rw,relatime - fuseblk /dev/sde1 rw,user_id=0\n"
+    "1850 1616 8:17 / /hdd3 rw,relatime - fuseblk /dev/sdb2 rw,user_id=0\n"
+)
 
 
-def test_finds_files_under_target_mount(tmp_path):
-    _make_pid(tmp_path, 4821, "jellyfin", ["/media/HDD8TB/Movies/X.mkv"])
-    result = scan_open_files(DISKS, proc_base=str(tmp_path))
-    assert result == [
-        OpenFile(pid=4821, comm="jellyfin", disk="sde",
-                  path="/media/HDD8TB/Movies/X.mkv")
-    ]
+def test_disk_for_source_matches_partition():
+    assert disk_for_source("/dev/sde1", DISKS) == "sde"
+    assert disk_for_source("/dev/sde", DISKS) == "sde"
+    assert disk_for_source("/dev/sdb2", DISKS) == "sdb"
+    assert disk_for_source("/dev/sda1", DISKS) is None
 
 
-def test_ignores_paths_outside_all_mounts(tmp_path):
-    _make_pid(tmp_path, 100, "bash", ["/home/user/foo.txt", "/dev/null"])
-    result = scan_open_files(DISKS, proc_base=str(tmp_path))
-    assert result == []
+def test_parse_mountinfo_maps_target_mounts():
+    m = parse_mountinfo(MOUNTINFO, DISKS)
+    assert m == {1848: "sde", 1850: "sdb"}   # overlay ignorado
 
 
-def test_exclude_pids_filters_pid(tmp_path):
-    _make_pid(tmp_path, 4821, "jellyfin", ["/media/HDD8TB/Movies/X.mkv"])
-    result = scan_open_files(DISKS, proc_base=str(tmp_path),
-                              exclude_pids=frozenset({4821}))
-    assert result == []
+def _mkproc(tmp_path, pid, mountinfo, fds):
+    """fds: list of (fdname, mnt_id, target_path)."""
+    p = tmp_path / str(pid); (p / "fd").mkdir(parents=True); (p / "fdinfo").mkdir()
+    (p / "mountinfo").write_text(mountinfo)
+    (p / "comm").write_text("jellyfin\n")
+    for name, mnt_id, target in fds:
+        os.symlink(target, p / "fd" / name)
+        (p / "fdinfo" / name).write_text(f"pos:\t0\nflags:\t0100000\nmnt_id:\t{mnt_id}\n")
 
 
-def test_broken_symlink_and_unreadable_fd_dir_skip_gracefully(tmp_path):
-    # pid com symlink partido (target inexistente é permitido por os.symlink,
-    # mas aqui simulamos um fd cujo readlink falha removendo o link depois de
-    # o criar não é fácil; em vez disso testamos que um alvo "estranho" sem
-    # ficheiro real não rebenta, pois readlink nunca acede ao conteúdo).
-    _make_pid(tmp_path, 200, "ghost", ["/media/HDD8TB/does/not/exist.mkv"])
-
-    # pid sem diretório fd/ (processo desapareceu entre listdir e leitura)
-    pdir_no_fd = tmp_path / "300"
-    pdir_no_fd.mkdir()
-    (pdir_no_fd / "comm").write_text("gone\n")
-    # sem fd/ dir -> iterdir deve falhar com OSError e ser ignorado
-
-    result = scan_open_files(DISKS, proc_base=str(tmp_path))
-    assert result == [
-        OpenFile(pid=200, comm="ghost", disk="sde",
-                  path="/media/HDD8TB/does/not/exist.mkv")
-    ]
+def test_scan_attributes_container_fd_by_device(tmp_path):
+    # fd aponta para caminho do CONTAINER (/hdd8/...), mnt_id do mount /hdd8 (1848)
+    _mkproc(tmp_path, 3181, MOUNTINFO,
+            [("20", 1848, "/hdd8/Movies/X.mkv"), ("3", 1616, "/dev/null")])
+    res = scan_open_files(DISKS, proc_base=str(tmp_path))
+    assert res == [OpenFile(3181, "jellyfin", "sde", "/hdd8/Movies/X.mkv")]
 
 
-def test_dedup_by_pid_and_path(tmp_path):
-    # dois fds diferentes do mesmo pid apontando para o mesmo path -> 1 resultado
-    pdir = tmp_path / "500"
-    pdir.mkdir()
-    (pdir / "comm").write_text("bazarr\n")
-    fddir = pdir / "fd"
-    fddir.mkdir()
-    os.symlink("/media/HDD8TB/Movies/dup.mkv", fddir / "3")
-    os.symlink("/media/HDD8TB/Movies/dup.mkv", fddir / "7")
-    result = scan_open_files(DISKS, proc_base=str(tmp_path))
-    assert result == [
-        OpenFile(pid=500, comm="bazarr", disk="sde",
-                  path="/media/HDD8TB/Movies/dup.mkv")
-    ]
+def test_scan_skips_process_without_target_mounts(tmp_path):
+    _mkproc(tmp_path, 999, "1616 1615 0:50 / / rw - overlay overlay rw\n",
+            [("5", 1616, "/whatever")])
+    assert scan_open_files(DISKS, proc_base=str(tmp_path)) == []
 
 
-def test_non_digit_dirs_ignored(tmp_path):
-    (tmp_path / "self").mkdir()
-    (tmp_path / "net").mkdir()
-    result = scan_open_files(DISKS, proc_base=str(tmp_path))
-    assert result == []
+def test_scan_exclude_pids(tmp_path):
+    _mkproc(tmp_path, 3181, MOUNTINFO, [("20", 1848, "/hdd8/a.mkv")])
+    assert scan_open_files(DISKS, proc_base=str(tmp_path),
+                           exclude_pids=frozenset({3181})) == []
+
+
+def test_scan_dedup_same_pid_path(tmp_path):
+    _mkproc(tmp_path, 3181, MOUNTINFO,
+            [("20", 1848, "/hdd8/a.mkv"), ("21", 1848, "/hdd8/a.mkv")])
+    assert len(scan_open_files(DISKS, proc_base=str(tmp_path))) == 1

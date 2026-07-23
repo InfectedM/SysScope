@@ -56,6 +56,26 @@
         <tbody></tbody>
       </table>
     </section>
+
+    <section id="system" class="panel">
+      <h2>Sistema</h2>
+      <div id="system-body" class="cards"></div>
+    </section>
+    <section id="processes" class="panel">
+      <h2>Processos (top CPU)</h2>
+      <table id="proc-table">
+        <thead><tr><th>PID</th><th>Nome</th><th>CPU</th><th>Memória</th><th>Disco (R/W)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section id="wakeups" class="panel">
+      <h2>Wake-ups</h2>
+      <div id="wakeups-body" class="io"></div>
+      <table id="timers-table">
+        <thead><tr><th>Timer</th><th>Ativa</th><th>Próximo</th><th>Último</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
   </main>
 
   <script src="/static/uplot.iife.min.js"></script>

@@ -12,6 +12,9 @@ from sysscope.collector.docker_stats import read_container_stats
 from sysscope.collector.systemd_units import read_units, summarize
 from sysscope.collector.connections import read_connections
 from sysscope.collector.netdev import parse_net_dev, net_rates, NetStat
+from sysscope.collector.sysinfo import read_system
+from sysscope.collector.wakeups import read_wakeups
+from sysscope.collector.procstat import read_top_processes
 
 
 def _read_net_dev() -> str:
@@ -55,3 +58,7 @@ class ServicesCollector:
                 self._db.insert_net_sample(now, iface, rx, tx)
         self._prev_net = curr
         self._prev_net_ts = now
+
+        self._db.put_snapshot("system", now, json.dumps(read_system()))
+        self._db.put_snapshot("wakeups", now, json.dumps(read_wakeups(self._runner)))
+        self._db.put_snapshot("processes", now, json.dumps(read_top_processes()))
