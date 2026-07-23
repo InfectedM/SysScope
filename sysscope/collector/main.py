@@ -15,7 +15,6 @@ import time
 
 from sysscope.common.config import load_config, Config
 from sysscope.storage.db import Database
-from sysscope.collector.power import PowerReader
 from sysscope.collector.cgroup import ContainerResolver
 from sysscope.collector.disk_collector import DiskCollector
 from sysscope.collector.io_attribution import IoAttribution, AttributedEvent
@@ -48,7 +47,7 @@ def run(cfg: Config, db: Database) -> None:
             active_disks.add(disk)
 
     collector = DiskCollector(
-        cfg, PowerReader(), on_spinup, on_sample,
+        cfg, on_spinup, on_sample,
         diskstats_reader=_read_diskstats, clock=time.time,
     )
 
