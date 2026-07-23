@@ -39,10 +39,9 @@ function renderDisks(disks) {
   el.innerHTML = "";
   disks.sort((a, b) => a.disk.localeCompare(b.disk));
   for (const d of disks) {
-    const spun = (d.power_state === "standby" || d.power_state === "sleeping");
-    const stateLabel = spun ? "adormecido" :
-      (d.power_state === "active" ? "ativo" :
-       d.power_state === "unknown" ? "desconhecido" : d.power_state);
+    const isActive = d.power_state === "active";
+    const stateLabel = isActive ? "ativo" : "adormecido";
+    const stateClass = isActive ? "active" : "standby";
     const info = diskInfo[d.disk] || {};
     const mountLine = (info.mount || info.device)
       ? `${esc(info.mount || "—")} · ${esc(info.device || "—")}` : "";
@@ -58,7 +57,7 @@ function renderDisks(disks) {
         ${DISK_ICON}
         <span class="disk-name">${esc(d.disk)}</span>
       </div>
-      <span class="status-pill ${esc(d.power_state)}"><span class="dot"></span>${esc(stateLabel)}</span>
+      <span class="status-pill ${esc(stateClass)}"><span class="dot"></span>${esc(stateLabel)}</span>
       <div class="rate-row">
         <div class="rate">
           <span class="rate-label">leitura</span>
