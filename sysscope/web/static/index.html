@@ -28,6 +28,28 @@
         <tbody></tbody>
       </table>
     </section>
+
+    <section id="services" class="panel">
+      <h2>Serviços</h2>
+      <div id="services-summary" class="io"></div>
+      <table id="containers-table">
+        <thead><tr><th>Container</th><th>CPU</th><th>Memória</th><th>Rede (R/T)</th><th>Disco (R/W)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="network" class="panel">
+      <h2>Rede</h2>
+      <table id="net-table">
+        <thead><tr><th>Interface</th><th>↓ RX</th><th>↑ TX</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <h3 style="font-size:15px;margin:16px 0 8px;color:var(--muted)">Ligações ativas</h3>
+      <table id="conn-table">
+        <thead><tr><th>Proto</th><th>Estado</th><th>Local</th><th>Remoto</th><th>Processo</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
   </main>
 
   <script src="/static/uplot.iife.min.js"></script>

@@ -38,6 +38,20 @@ CREATE TABLE IF NOT EXISTS io_events (
     FOREIGN KEY(incident_id) REFERENCES incidents(id)
 );
 CREATE INDEX IF NOT EXISTS idx_events_incident ON io_events(incident_id);
+
+CREATE TABLE IF NOT EXISTS net_samples (
+    ts REAL NOT NULL,
+    iface TEXT NOT NULL,
+    rx_bps REAL NOT NULL,
+    tx_bps REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_net_iface_ts ON net_samples(iface, ts);
+
+CREATE TABLE IF NOT EXISTS snapshots (
+    kind TEXT PRIMARY KEY,
+    ts REAL NOT NULL,
+    payload TEXT NOT NULL
+);
 """
 
 
@@ -120,6 +134,36 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def insert_net_sample(self, ts, iface, rx_bps, tx_bps) -> None:
+        self._conn.execute(
+            "INSERT INTO net_samples VALUES (?,?,?,?)", (ts, iface, rx_bps, tx_bps))
+        self._conn.commit()
+
+    def latest_net_status(self) -> list[dict]:
+        rows = self._conn.execute(
+            """SELECT s.* FROM net_samples s
+               JOIN (SELECT iface, MAX(ts) mts FROM net_samples GROUP BY iface) m
+               ON s.iface=m.iface AND s.ts=m.mts""").fetchall()
+        return [dict(r) for r in rows]
+
+    def recent_net_samples(self, iface, since) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM net_samples WHERE iface=? AND ts>? ORDER BY ts",
+            (iface, since)).fetchall()
+        return [dict(r) for r in rows]
+
+    def put_snapshot(self, kind, ts, payload) -> None:
+        self._conn.execute(
+            "INSERT INTO snapshots (kind, ts, payload) VALUES (?,?,?) "
+            "ON CONFLICT(kind) DO UPDATE SET ts=excluded.ts, payload=excluded.payload",
+            (kind, ts, payload))
+        self._conn.commit()
+
+    def get_snapshot(self, kind) -> dict | None:
+        r = self._conn.execute(
+            "SELECT ts, payload FROM snapshots WHERE kind=?", (kind,)).fetchone()
+        return dict(r) if r else None
+
     def purge_older_than(self, cutoff_ts) -> int:
         cur = self._conn.execute("DELETE FROM disk_samples WHERE ts<?", (cutoff_ts,))
         n = cur.rowcount
@@ -127,6 +171,7 @@ class Database:
             "DELETE FROM io_events WHERE incident_id IN "
             "(SELECT id FROM incidents WHERE ts<?)", (cutoff_ts,))
         self._conn.execute("DELETE FROM incidents WHERE ts<?", (cutoff_ts,))
+        self._conn.execute("DELETE FROM net_samples WHERE ts<?", (cutoff_ts,))
         self._conn.commit()
         return n
 

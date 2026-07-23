@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -32,6 +33,28 @@ def create_app(db: Database, static_dir: str) -> FastAPI:
         items = db.list_incidents(1000)
         match = next((i for i in items if i["id"] == incident_id), None)
         return {"incident": match, "events": db.incident_events(incident_id)}
+
+    @app.get("/api/services")
+    def services() -> dict:
+        snap = db.get_snapshot("services")
+        return json.loads(snap["payload"]) if snap else {}
+
+    @app.get("/api/containers")
+    def containers() -> list:
+        snap = db.get_snapshot("containers")
+        return json.loads(snap["payload"]) if snap else []
+
+    @app.get("/api/network")
+    def network() -> dict:
+        conns = db.get_snapshot("connections")
+        return {
+            "interfaces": db.latest_net_status(),
+            "connections": json.loads(conns["payload"]) if conns else [],
+        }
+
+    @app.get("/api/network/samples")
+    def network_samples(iface: str, since: float = 0.0) -> list:
+        return db.recent_net_samples(iface, since)
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
