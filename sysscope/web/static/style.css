@@ -180,10 +180,8 @@ main { max-width: 1240px; margin: 0 auto; padding: 24px 24px 64px; }
 .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; }
 .status-pill.active { background: rgba(52, 211, 153, .13); color: var(--ok); }
 .status-pill.active .dot { background: var(--ok); }
-.status-pill.standby, .status-pill.sleeping { background: rgba(107, 114, 128, .18); color: var(--idle); }
-.status-pill.standby .dot, .status-pill.sleeping .dot { background: var(--idle); }
-.status-pill.unknown { background: rgba(139, 92, 246, .13); color: var(--accent-soft); }
-.status-pill.unknown .dot { background: var(--accent-soft); }
+.status-pill.standby { background: rgba(107, 114, 128, .18); color: var(--idle); }
+.status-pill.standby .dot { background: var(--idle); }
 
 .rate-row { display: flex; gap: 20px; margin-top: 14px; }
 .rate { display: flex; flex-direction: column; gap: 2px; }
@@ -242,6 +240,38 @@ td.fail { color: var(--danger); font-weight: 600; }
 td.truncate {
   max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ---------- Incident patterns & modal ---------- */
+.pattern-row { margin: 4px 0; }
+.pattern-row .disk { color: var(--accent-soft); font-weight: 600; }
+.chip {
+  display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px;
+  background: rgba(139, 92, 246, .15); color: var(--accent-soft); margin: 0 4px 2px 0;
+}
+
+#incident-table tbody tr { cursor: pointer; }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .6);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 60; padding: 24px;
+}
+.modal-overlay[hidden] { display: none; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 16px; max-width: 760px; width: 100%; max-height: 80vh; overflow: auto;
+  padding: 20px 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+}
+.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.modal-head h3 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text); }
+.icon-btn {
+  background: none; border: none; color: var(--muted); font-size: 22px;
+  cursor: pointer; line-height: 1; padding: 4px 8px; border-radius: 8px;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.icon-btn:hover { color: var(--text); background: var(--surface-2); }
+.icon-btn:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
 
 /* ---------- Motion & accessibility ---------- */
 @media (prefers-reduced-motion: reduce) {

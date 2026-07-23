@@ -84,6 +84,8 @@ async function loadIncidents() {
   tb.innerHTML = "";
   for (const r of rows) {
     const tr = document.createElement("tr");
+    tr.dataset.id = r.id;
+    tr.onclick = () => openIncident(r.id);
     tr.innerHTML = `
       <td class="mono">${fmtTime(r.ts)}</td>
       <td class="mono">${esc(r.disk)}</td>
@@ -91,6 +93,37 @@ async function loadIncidents() {
       <td class="culprit">${esc(r.top_culprit || "…")}</td>`;
     tb.appendChild(tr);
   }
+}
+
+async function openIncident(id) {
+  const modal = document.getElementById("incident-modal");
+  const body = document.getElementById("modal-body");
+  body.innerHTML = "a carregar…";
+  modal.hidden = false;
+  const data = await fetch("/api/incidents/" + id).then(r => r.json());
+  const inc = data.incident || {};
+  const evs = data.events || [];
+  let html = `<div class="summary-line">${esc(inc.disk || "")} · ${esc(inc.detection || "")} · ${fmtTime(inc.ts)} · culpado: <b>${esc(inc.top_culprit || "—")}</b></div>`;
+  if (!evs.length) {
+    html += `<p class="summary-line">Sem acessos capturados nesta janela.</p>`;
+  } else {
+    html += `<div class="table-wrap"><table><thead><tr><th>Quando</th><th>Processo</th><th>Op</th><th>Ficheiro</th></tr></thead><tbody>` +
+      evs.map(e => `<tr><td class="mono">${fmtTime(e.ts)}</td><td>${esc(e.container || e.comm)}</td><td>${esc(e.op)}</td><td class="mono truncate" title="${esc(e.path)}">${esc(e.path)}</td></tr>`).join("") +
+      `</tbody></table></div>`;
+  }
+  body.innerHTML = html;
+}
+
+function closeIncident() { document.getElementById("incident-modal").hidden = true; }
+
+async function loadPatterns() {
+  const rows = await fetch("/api/incidents/summary?hours=24").then(r => r.json());
+  const el = document.getElementById("incident-patterns");
+  if (!rows.length) { el.textContent = "Sem spin-ups nas últimas 24h."; return; }
+  el.innerHTML = "<b>Últimas 24h:</b> " + rows.map(r =>
+    `<div class="pattern-row"><span class="disk">${esc(r.disk)}</span> — ${r.count}× ` +
+    r.culprits.map(c => `<span class="chip">${esc(c.name)} (${c.count})</span>`).join("") +
+    `</div>`).join("");
 }
 
 function fmtPct(p) { return (p ?? 0).toFixed(1) + "%"; }
@@ -247,6 +280,12 @@ async function init() {
   await loadNetwork();
   await loadSystem(); await loadProcesses(); await loadWakeups();
   await loadAccess();
+  document.getElementById("modal-close").onclick = closeIncident;
+  document.getElementById("incident-modal").onclick = (e) => {
+    if (e.target.id === "incident-modal") closeIncident();
+  };
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeIncident(); });
+  await loadPatterns();
   connectWs();
   setInterval(loadDiskInfo, 5000);
   setInterval(loadIncidents, 10000);
@@ -255,6 +294,7 @@ async function init() {
   setInterval(loadSystem, 5000);
   setInterval(loadProcesses, 5000);
   setInterval(loadWakeups, 15000);
+  setInterval(loadPatterns, 15000);
 }
 
 init();
