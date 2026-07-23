@@ -32,6 +32,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px 24px 64px; }
 .state.standby, .state.sleeping { background: rgba(107,114,128,.2); color: var(--standby); }
 .state.unknown { background: rgba(139,92,246,.15); color: var(--accent-soft); }
 .card .io { color: var(--muted); font-size: 13px; margin-top: 10px; line-height: 1.6; }
+.card .mountinfo { color: var(--muted); font-size: 12px; margin-top: 8px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 500; }

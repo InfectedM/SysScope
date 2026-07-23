@@ -15,7 +15,18 @@ function fmtTime(ts) {
   return new Date(ts * 1000).toLocaleString("pt-PT");
 }
 
+let diskInfo = {};
+let lastDisks = [];
+
+async function loadDiskInfo() {
+  try {
+    diskInfo = await fetch("/api/disks/info").then(r => r.json());
+  } catch (e) { diskInfo = diskInfo || {}; }
+  if (lastDisks.length) renderDisks(lastDisks);   // re-render com a info nova
+}
+
 function renderDisks(disks) {
+  lastDisks = disks;
   const el = document.getElementById("disk-cards");
   el.innerHTML = "";
   disks.sort((a, b) => a.disk.localeCompare(b.disk));
@@ -24,6 +35,13 @@ function renderDisks(disks) {
     const stateLabel = spun ? "adormecido" :
       (d.power_state === "active" ? "ativo" :
        d.power_state === "unknown" ? "desconhecido" : d.power_state);
+    const info = diskInfo[d.disk] || {};
+    const mountLine = (info.mount || info.device)
+      ? `${esc(info.mount || "—")} · ${esc(info.device || "—")}` : "";
+    const users = (info.users || []);
+    const usersLine = users.length
+      ? users.map(u => u.files > 1 ? `${esc(u.name)} (${u.files})` : esc(u.name)).join(", ")
+      : "—";
     const card = document.createElement("div");
     card.className = "card";
     card.innerHTML = `
@@ -32,7 +50,9 @@ function renderDisks(disks) {
       <div class="io">
         leitura: ${fmtBytes(d.read_bps)}<br>
         escrita: ${fmtBytes(d.write_bps)}
-      </div>`;
+      </div>
+      ${mountLine ? `<div class="mountinfo">${mountLine}</div>` : ""}
+      <div class="io">em uso por: ${usersLine}</div>`;
     el.appendChild(card);
   }
 }
@@ -198,12 +218,14 @@ function connectWs() {
 async function init() {
   const res = await fetch("/api/disks");
   renderDisks(await res.json());
+  await loadDiskInfo();
   await loadIncidents();
   await loadServices();
   await loadNetwork();
   await loadSystem(); await loadProcesses(); await loadWakeups();
   await loadAccess();
   connectWs();
+  setInterval(loadDiskInfo, 5000);
   setInterval(loadIncidents, 10000);
   setInterval(loadServices, 5000);
   setInterval(loadNetwork, 5000);
