@@ -19,6 +19,10 @@ let diskInfo = {};
 let lastDisks = [];
 const _spark = {};       // disco -> instância uPlot
 let _sparkData = {};     // disco -> [ts[], total_bps[]]
+// Pontos de corte (só display): as secções de histórico mostram apenas o que
+// acontece a partir do "Limpar". Os dados continuam na BD; recarregar repõe tudo.
+let incidentsCutoff = 0;
+let chartsCutoff = 0;
 
 async function loadDiskInfo() {
   try {
@@ -85,7 +89,7 @@ function renderDisks(disks) {
 // Os cartões são reconstruídos a cada tick do WebSocket, por isso os gráficos
 // são recriados a partir dos dados em cache (redesenho idêntico, sem cintilação).
 async function refreshSparkData() {
-  const since = Date.now() / 1000 - 600;
+  const since = Math.max(Date.now() / 1000 - 600, chartsCutoff);
   await Promise.all(lastDisks.map(async (d) => {
     try {
       const rows = await fetch(`/api/disks/${encodeURIComponent(d.disk)}/samples?since=${since}`)
@@ -125,9 +129,16 @@ function drawSparks() {
 
 async function loadIncidents() {
   const res = await fetch("/api/incidents?limit=50");
-  const rows = await res.json();
+  const rows = (await res.json()).filter((r) => r.ts >= incidentsCutoff);
   const tb = document.querySelector("#incident-table tbody");
   tb.innerHTML = "";
+  if (!rows.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="4" class="empty">${incidentsCutoff > 0
+      ? "Sem incidentes desde a limpeza." : "Sem incidentes registados."}</td>`;
+    tb.appendChild(tr);
+    return;
+  }
   for (const r of rows) {
     const tr = document.createElement("tr");
     tr.dataset.id = r.id;
@@ -163,7 +174,11 @@ async function openIncident(id) {
 function closeIncident() { document.getElementById("incident-modal").hidden = true; }
 
 async function loadPatterns() {
-  const rows = await fetch("/api/incidents/summary?hours=24").then(r => r.json());
+  // Janela derivada do corte: após "Limpar", só conta o que veio depois.
+  const hours = incidentsCutoff > 0
+    ? Math.min(24, Math.max(0, (Date.now() / 1000 - incidentsCutoff) / 3600))
+    : 24;
+  const rows = await fetch(`/api/incidents/summary?hours=${hours}`).then(r => r.json());
   const el = document.getElementById("incident-patterns");
   if (!rows.length) { el.textContent = "Sem spin-ups nas últimas 24h."; return; }
   el.innerHTML = "<b>Últimas 24h:</b> " + rows.map(r =>
@@ -332,6 +347,20 @@ async function init() {
     if (e.target.id === "incident-modal") closeIncident();
   };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeIncident(); });
+  document.querySelectorAll(".clear-btn").forEach((b) => {
+    b.onclick = () => {
+      const now = Date.now() / 1000;
+      if (b.dataset.clear === "incidents") {
+        incidentsCutoff = now;
+        loadIncidents(); loadPatterns();
+      } else if (b.dataset.clear === "disks") {
+        chartsCutoff = now;
+        _sparkData = {};
+        drawSparks();
+        refreshSparkData();
+      }
+    };
+  });
   await loadPatterns();
   connectWs();
   setInterval(loadDiskInfo, 5000);
