@@ -25,6 +25,14 @@ async function loadDiskInfo() {
   if (lastDisks.length) renderDisks(lastDisks);   // re-render com a info nova
 }
 
+const DISK_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="14" width="20" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/><path d="M6.5 20.5v0M2 14 5 4h14l3 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17.5" cy="17.5" r="1" fill="currentColor"/></svg>';
+
+function fmtRate(bps) {
+  const s = fmtBytes(bps);
+  const m = s.match(/^([\d.]+)\s(.+)$/);
+  return m ? { value: m[1], unit: m[2] } : { value: s, unit: "" };
+}
+
 function renderDisks(disks) {
   lastDisks = disks;
   const el = document.getElementById("disk-cards");
@@ -39,20 +47,33 @@ function renderDisks(disks) {
     const mountLine = (info.mount || info.device)
       ? `${esc(info.mount || "—")} · ${esc(info.device || "—")}` : "";
     const users = (info.users || []);
-    const usersLine = users.length
-      ? users.map(u => u.files > 1 ? `${esc(u.name)} (${u.files})` : esc(u.name)).join(", ")
-      : "—";
+    const chips = users.length
+      ? users.map(u => `<span class="app-chip">${esc(u.name)}${u.files > 1 ? `<span class="chip-count">${u.files}</span>` : ""}</span>`).join("")
+      : `<span class="app-chip" style="opacity:.6">—</span>`;
+    const rd = fmtRate(d.read_bps), wr = fmtRate(d.write_bps);
     const card = document.createElement("div");
-    card.className = "card";
+    card.className = "disk-card";
     card.innerHTML = `
-      <div class="name">${esc(d.disk)}</div>
-      <span class="state ${d.power_state}">${esc(stateLabel)}</span>
-      <div class="io">
-        leitura: ${fmtBytes(d.read_bps)}<br>
-        escrita: ${fmtBytes(d.write_bps)}
+      <div class="disk-card-top">
+        ${DISK_ICON}
+        <span class="disk-name">${esc(d.disk)}</span>
       </div>
-      ${mountLine ? `<div class="mountinfo">${mountLine}</div>` : ""}
-      <div class="io">em uso por: ${usersLine}</div>`;
+      <span class="status-pill ${esc(d.power_state)}"><span class="dot"></span>${esc(stateLabel)}</span>
+      <div class="rate-row">
+        <div class="rate">
+          <span class="rate-label">leitura</span>
+          <span class="rate-value">${esc(rd.value)}<span class="unit">${esc(rd.unit)}</span></span>
+        </div>
+        <div class="rate">
+          <span class="rate-label">escrita</span>
+          <span class="rate-value">${esc(wr.value)}<span class="unit">${esc(wr.unit)}</span></span>
+        </div>
+      </div>
+      ${mountLine ? `<div class="mountinfo" title="${mountLine}">${mountLine}</div>` : ""}
+      <div class="used-by">
+        <div class="used-by-label">em uso por</div>
+        <div class="app-chips">${chips}</div>
+      </div>`;
     el.appendChild(card);
   }
 }
@@ -65,8 +86,8 @@ async function loadIncidents() {
   for (const r of rows) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${fmtTime(r.ts)}</td>
-      <td>${esc(r.disk)}</td>
+      <td class="mono">${fmtTime(r.ts)}</td>
+      <td class="mono">${esc(r.disk)}</td>
       <td>${esc(r.detection)}</td>
       <td class="culprit">${esc(r.top_culprit || "…")}</td>`;
     tb.appendChild(tr);
@@ -83,16 +104,16 @@ async function loadServices() {
   const sum = document.getElementById("services-summary");
   const failed = (svc.failed || []);
   sum.innerHTML = `${svc.active ?? 0} ativos de ${svc.total ?? 0} serviços · ` +
-    (failed.length ? `<span style="color:#f87171">${failed.length} falhados: ${esc(failed.join(", "))}</span>` : "sem falhas");
+    (failed.length ? `<span class="danger-text">${failed.length} falhados: ${esc(failed.join(", "))}</span>` : "sem falhas");
   const tb = document.querySelector("#containers-table tbody");
   tb.innerHTML = "";
   cont.sort((a, b) => (b.blk_read + b.blk_write) - (a.blk_read + a.blk_write));
   for (const c of cont) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${esc(c.name)}</td><td>${fmtPct(c.cpu_pct)}</td>` +
-      `<td>${fmtBytes(c.mem_used)}</td>` +
-      `<td>${fmtBytes(c.net_rx)} / ${fmtBytes(c.net_tx)}</td>` +
-      `<td>${fmtBytes(c.blk_read)} / ${fmtBytes(c.blk_write)}</td>`;
+    tr.innerHTML = `<td>${esc(c.name)}</td><td class="num">${fmtPct(c.cpu_pct)}</td>` +
+      `<td class="num">${fmtBytes(c.mem_used)}</td>` +
+      `<td class="num">${fmtBytes(c.net_rx)} / ${fmtBytes(c.net_tx)}</td>` +
+      `<td class="num">${fmtBytes(c.blk_read)} / ${fmtBytes(c.blk_write)}</td>`;
     tb.appendChild(tr);
   }
 }
@@ -103,15 +124,18 @@ async function loadNetwork() {
   nt.innerHTML = "";
   for (const i of (net.interfaces || [])) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${esc(i.iface)}</td><td>${fmtBytes(i.rx_bps)}/s</td><td>${fmtBytes(i.tx_bps)}/s</td>`;
+    tr.innerHTML = `<td>${esc(i.iface)}</td><td class="num">${fmtBytes(i.rx_bps)}/s</td><td class="num">${fmtBytes(i.tx_bps)}/s</td>`;
     nt.appendChild(tr);
   }
   const ct = document.querySelector("#conn-table tbody");
   ct.innerHTML = "";
   for (const c of (net.connections || []).slice(0, 100)) {
     const tr = document.createElement("tr");
+    const local = esc(c.local), remote = esc(c.remote);
     tr.innerHTML = `<td>${esc(c.proto)}</td><td>${esc(c.state)}</td>` +
-      `<td>${esc(c.local)}</td><td>${esc(c.remote)}</td><td>${esc(c.process || "—")}</td>`;
+      `<td class="mono truncate" title="${local}">${local}</td>` +
+      `<td class="mono truncate" title="${remote}">${remote}</td>` +
+      `<td class="truncate" title="${esc(c.process || "—")}">${esc(c.process || "—")}</td>`;
     ct.appendChild(tr);
   }
 }
@@ -145,8 +169,8 @@ async function loadProcesses() {
   tb.innerHTML = "";
   for (const p of procs) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${p.pid}</td><td>${esc(p.name)}</td><td>${(p.cpu_percent ?? 0).toFixed(1)}%</td>` +
-      `<td>${fmtBytes(p.mem_bytes || 0)}</td><td>${fmtBytes(p.read_bytes || 0)} / ${fmtBytes(p.write_bytes || 0)}</td>`;
+    tr.innerHTML = `<td class="num">${p.pid}</td><td>${esc(p.name)}</td><td class="num">${(p.cpu_percent ?? 0).toFixed(1)}%</td>` +
+      `<td class="num">${fmtBytes(p.mem_bytes || 0)}</td><td class="num">${fmtBytes(p.read_bytes || 0)} / ${fmtBytes(p.write_bytes || 0)}</td>`;
     tb.appendChild(tr);
   }
 }
@@ -160,8 +184,8 @@ async function loadWakeups() {
   tb.innerHTML = "";
   for (const t of (w.timers || [])) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${esc(t.unit)}</td><td>${esc(t.activates)}</td>` +
-      `<td>${fmtWhen(t.next)}</td><td>${fmtWhen(t.last)}</td>`;
+    tr.innerHTML = `<td class="mono">${esc(t.unit)}</td><td>${esc(t.activates)}</td>` +
+      `<td class="mono">${fmtWhen(t.next)}</td><td class="mono">${fmtWhen(t.last)}</td>`;
     tb.appendChild(tr);
   }
 }
