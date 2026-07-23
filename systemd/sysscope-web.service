@@ -8,7 +8,7 @@ User=infectedserver
 WorkingDirectory=/opt/sysscope
 ExecStart=/opt/sysscope/.venv/bin/python -m sysscope.web.app
 Restart=always
-RestartSec=5
+RestartSec=1
 
 [Install]
 WantedBy=multi-user.target

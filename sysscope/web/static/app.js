@@ -110,15 +110,29 @@ async function loadAccess() {
 async function setAccess(mode) {
   const cur = document.querySelector(".access-btn.on")?.dataset.mode;
   if (mode === cur) return;
-  if (mode === "localhost" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+  const isLocal = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
+  if (mode === "localhost" && !isLocal) {
     if (!confirm("Vais desligar o acesso LAN. Esta página (aberta por IP) vai deixar de responder. Continuar?")) return;
   }
   await fetch("/api/settings/bind", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ bind_mode: mode }),
   });
-  document.getElementById("access-url").textContent = "a reiniciar…";
-  setTimeout(() => location.reload(), 2500);
+  const urlEl = document.getElementById("access-url");
+  urlEl.textContent = "a reiniciar…";
+  const deadline = Date.now() + 20000;
+  const poll = async () => {
+    if (Date.now() > deadline) {
+      urlEl.textContent = "reinício demorado — recarrega a página manualmente";
+      return;
+    }
+    try {
+      const r = await fetch("/api/settings", { cache: "no-store" });
+      if (r.ok) { location.reload(); return; }
+    } catch (e) { /* servidor ainda a reiniciar */ }
+    setTimeout(poll, 1000);
+  };
+  setTimeout(poll, 2000);
 }
 
 function connectWs() {
