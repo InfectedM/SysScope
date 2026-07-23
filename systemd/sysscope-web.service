@@ -7,7 +7,7 @@ Type=simple
 User=infectedserver
 WorkingDirectory=/opt/sysscope
 ExecStart=/opt/sysscope/.venv/bin/python -m sysscope.web.app
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]
