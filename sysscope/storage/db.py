@@ -4,6 +4,13 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+
+def culprit_name(top_culprit: str | None) -> str:
+    """Extrai o nome do culpado (antes de ' ('); vazio/None -> 'desconhecido'."""
+    if not top_culprit:
+        return "desconhecido"
+    return top_culprit.split(" (")[0]
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS disk_samples (
     ts REAL NOT NULL,
@@ -133,6 +140,23 @@ class Database:
             (incident_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def incident_summary(self, since: float) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT disk, top_culprit FROM incidents WHERE ts>=?", (since,)
+        ).fetchall()
+        from collections import Counter
+        per_disk: dict[str, Counter] = {}
+        for r in rows:
+            per_disk.setdefault(r["disk"], Counter())[culprit_name(r["top_culprit"])] += 1
+        out = []
+        for disk, counter in per_disk.items():
+            culprits = [{"name": n, "count": c}
+                        for n, c in counter.most_common()]
+            out.append({"disk": disk, "count": sum(counter.values()),
+                        "culprits": culprits})
+        out.sort(key=lambda d: -d["count"])
+        return out
 
     def insert_net_sample(self, ts, iface, rx_bps, tx_bps) -> None:
         self._conn.execute(

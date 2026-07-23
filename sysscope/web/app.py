@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -73,6 +74,10 @@ def create_app(
     @app.get("/api/incidents")
     def incidents(limit: int = 50) -> list[dict]:
         return db.list_incidents(limit)
+
+    @app.get("/api/incidents/summary")
+    def incidents_summary(hours: float = 24.0) -> list:
+        return db.incident_summary(time.time() - hours * 3600)
 
     @app.get("/api/incidents/{incident_id}")
     def incident(incident_id: int) -> dict:

@@ -17,6 +17,8 @@ function fmtTime(ts) {
 
 let diskInfo = {};
 let lastDisks = [];
+const _spark = {};       // disco -> instância uPlot
+let _sparkData = {};     // disco -> [ts[], total_bps[]]
 
 async function loadDiskInfo() {
   try {
@@ -39,10 +41,9 @@ function renderDisks(disks) {
   el.innerHTML = "";
   disks.sort((a, b) => a.disk.localeCompare(b.disk));
   for (const d of disks) {
-    const spun = (d.power_state === "standby" || d.power_state === "sleeping");
-    const stateLabel = spun ? "adormecido" :
-      (d.power_state === "active" ? "ativo" :
-       d.power_state === "unknown" ? "desconhecido" : d.power_state);
+    const isActive = d.power_state === "active";
+    const stateLabel = isActive ? "ativo" : "adormecido";
+    const stateClass = isActive ? "active" : "standby";
     const info = diskInfo[d.disk] || {};
     const mountLine = (info.mount || info.device)
       ? `${esc(info.mount || "—")} · ${esc(info.device || "—")}` : "";
@@ -58,7 +59,7 @@ function renderDisks(disks) {
         ${DISK_ICON}
         <span class="disk-name">${esc(d.disk)}</span>
       </div>
-      <span class="status-pill ${esc(d.power_state)}"><span class="dot"></span>${esc(stateLabel)}</span>
+      <span class="status-pill ${esc(stateClass)}"><span class="dot"></span>${esc(stateLabel)}</span>
       <div class="rate-row">
         <div class="rate">
           <span class="rate-label">leitura</span>
@@ -73,8 +74,52 @@ function renderDisks(disks) {
       <div class="used-by">
         <div class="used-by-label">em uso por</div>
         <div class="app-chips">${chips}</div>
-      </div>`;
+      </div>
+      <div class="spark" id="spark-${d.disk}"></div>`;
     el.appendChild(card);
+  }
+  drawSparks();
+}
+
+// Sparkline de throughput total (leitura+escrita) por disco, últimos ~10 min.
+// Os cartões são reconstruídos a cada tick do WebSocket, por isso os gráficos
+// são recriados a partir dos dados em cache (redesenho idêntico, sem cintilação).
+async function refreshSparkData() {
+  const since = Date.now() / 1000 - 600;
+  await Promise.all(lastDisks.map(async (d) => {
+    try {
+      const rows = await fetch(`/api/disks/${encodeURIComponent(d.disk)}/samples?since=${since}`)
+        .then((r) => r.json());
+      _sparkData[d.disk] = [
+        rows.map((r) => r.ts),
+        rows.map((r) => (r.read_bps || 0) + (r.write_bps || 0)),
+      ];
+    } catch (e) { /* mantém dados anteriores */ }
+  }));
+  drawSparks();
+}
+
+function drawSparks() {
+  if (typeof uPlot === "undefined") return;
+  for (const d of lastDisks) {
+    const el = document.getElementById("spark-" + d.disk);
+    if (!el) continue;
+    if (_spark[d.disk]) { _spark[d.disk].destroy(); delete _spark[d.disk]; }
+    const data = _sparkData[d.disk];
+    if (!data || data[0].length < 2) { el.innerHTML = ""; continue; }
+    _spark[d.disk] = new uPlot({
+      width: el.clientWidth || 220,
+      height: 46,
+      cursor: { show: false },
+      legend: { show: false },
+      scales: { x: { time: true } },
+      axes: [{ show: false }, { show: false }],
+      series: [
+        {},
+        { stroke: "#a78bfa", width: 1.5, fill: "rgba(139,92,246,.18)",
+          points: { show: false } },
+      ],
+    }, data, el);
   }
 }
 
@@ -85,6 +130,8 @@ async function loadIncidents() {
   tb.innerHTML = "";
   for (const r of rows) {
     const tr = document.createElement("tr");
+    tr.dataset.id = r.id;
+    tr.onclick = () => openIncident(r.id);
     tr.innerHTML = `
       <td class="mono">${fmtTime(r.ts)}</td>
       <td class="mono">${esc(r.disk)}</td>
@@ -92,6 +139,37 @@ async function loadIncidents() {
       <td class="culprit">${esc(r.top_culprit || "…")}</td>`;
     tb.appendChild(tr);
   }
+}
+
+async function openIncident(id) {
+  const modal = document.getElementById("incident-modal");
+  const body = document.getElementById("modal-body");
+  body.innerHTML = "a carregar…";
+  modal.hidden = false;
+  const data = await fetch("/api/incidents/" + id).then(r => r.json());
+  const inc = data.incident || {};
+  const evs = data.events || [];
+  let html = `<div class="summary-line">${esc(inc.disk || "")} · ${esc(inc.detection || "")} · ${fmtTime(inc.ts)} · culpado: <b>${esc(inc.top_culprit || "—")}</b></div>`;
+  if (!evs.length) {
+    html += `<p class="summary-line">Sem acessos capturados nesta janela.</p>`;
+  } else {
+    html += `<div class="table-wrap"><table><thead><tr><th>Quando</th><th>Processo</th><th>Op</th><th>Ficheiro</th></tr></thead><tbody>` +
+      evs.map(e => `<tr><td class="mono">${fmtTime(e.ts)}</td><td>${esc(e.container || e.comm)}</td><td>${esc(e.op)}</td><td class="mono truncate" title="${esc(e.path)}">${esc(e.path)}</td></tr>`).join("") +
+      `</tbody></table></div>`;
+  }
+  body.innerHTML = html;
+}
+
+function closeIncident() { document.getElementById("incident-modal").hidden = true; }
+
+async function loadPatterns() {
+  const rows = await fetch("/api/incidents/summary?hours=24").then(r => r.json());
+  const el = document.getElementById("incident-patterns");
+  if (!rows.length) { el.textContent = "Sem spin-ups nas últimas 24h."; return; }
+  el.innerHTML = "<b>Últimas 24h:</b> " + rows.map(r =>
+    `<div class="pattern-row"><span class="disk">${esc(r.disk)}</span> — ${r.count}× ` +
+    r.culprits.map(c => `<span class="chip">${esc(c.name)} (${c.count})</span>`).join("") +
+    `</div>`).join("");
 }
 
 function fmtPct(p) { return (p ?? 0).toFixed(1) + "%"; }
@@ -243,19 +321,28 @@ async function init() {
   const res = await fetch("/api/disks");
   renderDisks(await res.json());
   await loadDiskInfo();
+  await refreshSparkData();
   await loadIncidents();
   await loadServices();
   await loadNetwork();
   await loadSystem(); await loadProcesses(); await loadWakeups();
   await loadAccess();
+  document.getElementById("modal-close").onclick = closeIncident;
+  document.getElementById("incident-modal").onclick = (e) => {
+    if (e.target.id === "incident-modal") closeIncident();
+  };
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeIncident(); });
+  await loadPatterns();
   connectWs();
   setInterval(loadDiskInfo, 5000);
+  setInterval(refreshSparkData, 5000);
   setInterval(loadIncidents, 10000);
   setInterval(loadServices, 5000);
   setInterval(loadNetwork, 5000);
   setInterval(loadSystem, 5000);
   setInterval(loadProcesses, 5000);
   setInterval(loadWakeups, 15000);
+  setInterval(loadPatterns, 15000);
 }
 
 init();
