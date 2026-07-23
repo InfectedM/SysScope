@@ -17,7 +17,7 @@ do buffer antes do incidente abrir. Por omissão `backfill_horizon == window`
 from __future__ import annotations
 
 from collections import Counter, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -34,7 +34,9 @@ class AttributedEvent:
 
 def top_culprit(events: list[AttributedEvent]) -> str:
     if not events:
-        return "desconhecido"
+        # Spin-up detetado mas nenhum processo com ficheiro aberto na janela:
+        # acesso demasiado curto (leu uns KB e fechou) ou I/O do kernel/writeback.
+        return "acesso curto"
     counts = Counter(e.container or e.comm for e in events)
     name, n = counts.most_common(1)[0]
     unidade = "acesso" if n == 1 else "acessos"
@@ -48,6 +50,20 @@ class _OpenIncident:
     ts: float
     deadline: float
     events: list[AttributedEvent]
+    seen: set = field(default_factory=set)   # (pid, path) já registados
+
+
+def _attach(inc: _OpenIncident, ev: AttributedEvent) -> None:
+    """Anexa o evento ao incidente, deduplicando por (pid, caminho).
+
+    A rajada de varrimentos regista o mesmo ficheiro aberto muitas vezes; sem
+    deduplicação a contagem de 'acessos' ficaria inflada pela frequência do scan.
+    """
+    key = (ev.pid, ev.path)
+    if key in inc.seen:
+        return
+    inc.seen.add(key)
+    inc.events.append(ev)
 
 
 class IoAttribution:
@@ -65,15 +81,15 @@ class IoAttribution:
             self._recent.popleft()
         for inc in self._open:
             if ev.disk == inc.disk and ev.ts <= inc.deadline:
-                inc.events.append(ev)
+                _attach(inc, ev)
 
     def open_incident(self, incident_id: int, disk: str, ts: float) -> None:
-        backfill = [e for e in self._recent
-                    if e.disk == disk and e.ts >= ts - self._backfill_horizon]
-        self._open.append(_OpenIncident(
-            incident_id=incident_id, disk=disk, ts=ts,
-            deadline=ts + self._window, events=list(backfill),
-        ))
+        inc = _OpenIncident(incident_id=incident_id, disk=disk, ts=ts,
+                            deadline=ts + self._window, events=[])
+        for e in self._recent:
+            if e.disk == disk and e.ts >= ts - self._backfill_horizon:
+                _attach(inc, e)
+        self._open.append(inc)
 
     def finalize_due(self, now: float) -> None:
         still_open: list[_OpenIncident] = []

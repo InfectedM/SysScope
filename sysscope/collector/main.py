@@ -57,14 +57,19 @@ def run(cfg: Config, db: Database) -> None:
 
     exclude_pids = frozenset({os.getpid()})
 
+    # Enquanto há um incidente aberto, varre em rajada (cadência rápida) para
+    # apanhar acessos de leitura curtos que fecham o ficheiro entre polls.
+    burst_interval = 0.25
     try:
         last_refresh = 0.0
         last_purge = 0.0
         while not _stop.is_set():
             now = time.time()
             active_disks.clear()
-            collector.poll()
-            services_countdown -= cfg.sample_interval
+            collector.poll()   # pode abrir incidentes (on_spinup)
+            # Cadência deste ciclo: rápida se houver incidente aberto agora.
+            interval = burst_interval if io.has_open_incidents() else cfg.sample_interval
+            services_countdown -= interval
             if services_countdown <= 0:
                 services.poll()
                 services_countdown = cfg.services_interval
@@ -83,7 +88,7 @@ def run(cfg: Config, db: Database) -> None:
             if now - last_purge > 3600:
                 db.purge_older_than(now - cfg.retention_days * 86400)
                 last_purge = now
-            _stop.wait(cfg.sample_interval)
+            _stop.wait(interval)
     finally:
         # Persiste incidentes ainda abertos antes de terminar (SIGTERM pode
         # chegar entre um spin-up e a sua deadline de captura).
