@@ -117,6 +117,11 @@ def create_app(
         snap = db.get_snapshot("processes")
         return json.loads(snap["payload"]) if snap else []
 
+    @app.get("/api/disks/info")
+    def disks_info() -> dict:
+        snap = db.get_snapshot("disk_info")
+        return json.loads(snap["payload"]) if snap else {}
+
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
         await sock.accept()
