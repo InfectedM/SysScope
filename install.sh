@@ -16,7 +16,8 @@ sudo apt-get install -y hdparm smartmontools python3-venv rsync
 
 echo "==> A copiar o projeto para $DEST"
 sudo mkdir -p "$DEST"
-sudo cp -r sysscope pyproject.toml "$DEST/"
+sudo rsync -a --delete sysscope "$DEST/"
+sudo cp pyproject.toml "$DEST/"
 
 echo "==> A criar o virtualenv"
 sudo python3 -m venv "$DEST/.venv"

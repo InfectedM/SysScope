@@ -1,8 +1,8 @@
 "use strict";
 
 function esc(s) {
-  return String(s == null ? "" : s).replace(/[&<>"]/g, c =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function fmtBytes(bps) {
@@ -96,6 +96,56 @@ async function loadNetwork() {
   }
 }
 
+function fmtDur(s) {
+  if (!s) return "—";
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+  return d > 0 ? `${d}d ${h}h` : `${h}h ${Math.floor((s % 3600) / 60)}m`;
+}
+function fmtWhen(ts) { return ts ? new Date(ts * 1000).toLocaleString("pt-PT") : "—"; }
+
+async function loadSystem() {
+  const s = await fetch("/api/system").then(r => r.json());
+  const el = document.getElementById("system-body");
+  const temps = Object.entries(s.temps || {}).map(([k, v]) => `${esc(k)}: ${v}°C`).join("  ");
+  const cells = [
+    ["CPU", (s.cpu_percent ?? 0).toFixed(1) + "%"],
+    ["Carga", (s.load || []).map(x => x.toFixed(2)).join(" ")],
+    ["Memória", `${fmtBytes(s.mem_used || 0)} / ${fmtBytes(s.mem_total || 0)} (${(s.mem_percent ?? 0).toFixed(0)}%)`],
+    ["Swap", `${fmtBytes(s.swap_used || 0)} / ${fmtBytes(s.swap_total || 0)}`],
+    ["Uptime", fmtDur(s.uptime_seconds)],
+    ["Temperaturas", temps || "—"],
+  ];
+  el.innerHTML = cells.map(([k, v]) =>
+    `<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("");
+}
+
+async function loadProcesses() {
+  const procs = await fetch("/api/processes").then(r => r.json());
+  const tb = document.querySelector("#proc-table tbody");
+  tb.innerHTML = "";
+  for (const p of procs) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${p.pid}</td><td>${esc(p.name)}</td><td>${(p.cpu_percent ?? 0).toFixed(1)}%</td>` +
+      `<td>${fmtBytes(p.mem_bytes || 0)}</td><td>${fmtBytes(p.read_bytes || 0)} / ${fmtBytes(p.write_bytes || 0)}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
+async function loadWakeups() {
+  const w = await fetch("/api/wakeups").then(r => r.json());
+  const body = document.getElementById("wakeups-body");
+  const rtc = w.rtc_wakealarm ? fmtWhen(w.rtc_wakealarm) : "nenhum";
+  body.innerHTML = `RTC wakealarm: ${esc(rtc)} · ${(w.cron || []).length} entradas de cron`;
+  const tb = document.querySelector("#timers-table tbody");
+  tb.innerHTML = "";
+  for (const t of (w.timers || [])) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(t.unit)}</td><td>${esc(t.activates)}</td>` +
+      `<td>${fmtWhen(t.next)}</td><td>${fmtWhen(t.last)}</td>`;
+    tb.appendChild(tr);
+  }
+}
+
 async function loadAccess() {
   const st = await fetch("/api/settings").then(r => r.json());
   document.querySelectorAll(".access-btn").forEach(b => {
@@ -151,11 +201,15 @@ async function init() {
   await loadIncidents();
   await loadServices();
   await loadNetwork();
+  await loadSystem(); await loadProcesses(); await loadWakeups();
   await loadAccess();
   connectWs();
   setInterval(loadIncidents, 10000);
   setInterval(loadServices, 5000);
   setInterval(loadNetwork, 5000);
+  setInterval(loadSystem, 5000);
+  setInterval(loadProcesses, 5000);
+  setInterval(loadWakeups, 15000);
 }
 
 init();
