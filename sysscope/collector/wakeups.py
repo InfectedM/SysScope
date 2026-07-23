@@ -43,7 +43,7 @@ def read_cron(cron_paths: list[str]) -> list[dict]:
     out = []
     for path in cron_paths:
         try:
-            with open(path) as f:
+            with open(path, errors="replace") as f:
                 content = f.read()
         except OSError:
             continue

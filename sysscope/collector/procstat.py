@@ -14,7 +14,7 @@ def read_top_processes(limit: int = 15) -> list[dict]:
     for p in it:
         try:
             p.cpu_percent(None)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil.NoSuchProcess, psutil.AccessDenied, Exception):
             continue
     for p in it:
         try:
@@ -33,7 +33,7 @@ def read_top_processes(limit: int = 15) -> list[dict]:
                 "read_bytes": rb,
                 "write_bytes": wb,
             })
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil.NoSuchProcess, psutil.AccessDenied, Exception):
             continue
     procs.sort(key=lambda x: x["cpu_percent"], reverse=True)
     return procs[:limit]

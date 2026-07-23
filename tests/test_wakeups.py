@@ -37,3 +37,9 @@ def test_read_rtc(tmp_path):
     empty = tmp_path / "empty"; empty.write_text("\n")
     assert wakeups.read_rtc_wakealarm(str(empty)) is None
     assert wakeups.read_rtc_wakealarm(str(tmp_path / "none")) is None
+
+
+def test_read_cron_survives_non_utf8(tmp_path):
+    p = tmp_path / "badenc"; p.write_bytes(b"\xff\xfe 0 3 * * * root /x.sh\n")
+    res = wakeups.read_cron([str(p)])   # não deve lançar
+    assert isinstance(res, list)
