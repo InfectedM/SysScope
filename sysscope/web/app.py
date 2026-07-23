@@ -75,15 +75,15 @@ def create_app(
     def incidents(limit: int = 50) -> list[dict]:
         return db.list_incidents(limit)
 
+    @app.get("/api/incidents/summary")
+    def incidents_summary(hours: float = 24.0) -> list:
+        return db.incident_summary(time.time() - hours * 3600)
+
     @app.get("/api/incidents/{incident_id}")
     def incident(incident_id: int) -> dict:
         items = db.list_incidents(1000)
         match = next((i for i in items if i["id"] == incident_id), None)
         return {"incident": match, "events": db.incident_events(incident_id)}
-
-    @app.get("/api/incidents/summary")
-    def incidents_summary(hours: float = 24.0) -> list:
-        return db.incident_summary(time.time() - hours * 3600)
 
     @app.get("/api/services")
     def services() -> dict:

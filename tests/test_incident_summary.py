@@ -1,4 +1,7 @@
+from fastapi.testclient import TestClient
+
 from sysscope.storage.db import Database, culprit_name
+from sysscope.web.app import create_app
 
 
 def test_culprit_name():
@@ -25,3 +28,31 @@ def test_incident_summary(tmp_path):
     assert by_disk["sdc"]["culprits"][0] == {"name": "bazarr", "count": 2}
     assert by_disk["sde"]["count"] == 1              # o de ts=50 foi excluído
     assert s[0]["disk"] == "sdc"                     # ordenado por count desc
+
+
+def test_summary_endpoint_reachable(tmp_path):
+    db = Database(str(tmp_path / "t.db"))
+    db.init_schema()
+    import time
+    now = time.time()
+    i = db.create_incident(now, "sdc", "atividade")
+    db.set_incident_culprit(i, "bazarr (3 acessos)")
+    ro = Database(str(tmp_path / "t.db"), read_only=True)
+    c = TestClient(create_app(ro, static_dir=str(tmp_path)))
+    r = c.get("/api/incidents/summary?hours=24")
+    assert r.status_code == 200
+    body = r.json()
+    assert body[0]["disk"] == "sdc"
+    assert body[0]["culprits"][0]["name"] == "bazarr"
+
+
+def test_incident_by_id_still_works(tmp_path):
+    # garante que a rota {incident_id} continua a funcionar após a reordenação
+    db = Database(str(tmp_path / "t.db"))
+    db.init_schema()
+    i = db.create_incident(1.0, "sde", "atividade")
+    ro = Database(str(tmp_path / "t.db"), read_only=True)
+    c = TestClient(create_app(ro, static_dir=str(tmp_path)))
+    r = c.get(f"/api/incidents/{i}")
+    assert r.status_code == 200
+    assert r.json()["incident"]["disk"] == "sde"
