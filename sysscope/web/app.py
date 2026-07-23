@@ -3,18 +3,64 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import threading
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from sysscope.common.config import load_config
 from sysscope.storage.db import Database
+from sysscope.web.settings import (
+    DEFAULT_SETTINGS_PATH,
+    host_for_mode,
+    lan_ipv4_addresses,
+    read_bind_mode,
+    write_bind_mode,
+)
 
 
-def create_app(db: Database, static_dir: str) -> FastAPI:
+class _BindBody(BaseModel):
+    # Definida ao nível do módulo (não dentro de create_app): com
+    # `from __future__ import annotations`, o FastAPI resolve anotações via
+    # get_type_hints() no __globals__ da função — uma classe aninhada não
+    # seria visível aí e o pydantic deixaria de ser detetado como corpo.
+    bind_mode: str
+
+
+def create_app(
+    db: Database,
+    static_dir: str,
+    settings_path: str = DEFAULT_SETTINGS_PATH,
+    restart_fn=None,
+) -> FastAPI:
     app = FastAPI(title="SysScope")
+
+    def _default_restart() -> None:
+        # Sai ~0.8s depois de responder; o systemd (Restart=always) reinicia
+        # o serviço, que relê o bind_mode no arranque.
+        threading.Timer(0.8, lambda: os._exit(0)).start()
+
+    do_restart = restart_fn or _default_restart
+
+    @app.get("/api/settings")
+    def get_settings() -> dict:
+        mode = read_bind_mode(settings_path)
+        port = getattr(app.state, "web_port", 8787)
+        urls = [f"http://{ip}:{port}" for ip in lan_ipv4_addresses()]
+        return {"bind_mode": mode, "port": port, "lan_urls": urls}
+
+    @app.post("/api/settings/bind")
+    def set_bind(body: _BindBody) -> dict:
+        try:
+            write_bind_mode(settings_path, body.bind_mode)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="bind_mode inválido")
+        do_restart()
+        return {"ok": True, "bind_mode": body.bind_mode, "restarting": True}
 
     @app.get("/api/disks")
     def disks() -> list[dict]:
@@ -84,7 +130,9 @@ def main() -> None:
     db = Database(cfg.db_path, read_only=True)
     static_dir = str(Path(__file__).parent / "static")
     app = create_app(db, static_dir)
-    uvicorn.run(app, host=cfg.web_host, port=cfg.web_port)
+    app.state.web_port = cfg.web_port
+    mode = read_bind_mode(DEFAULT_SETTINGS_PATH)
+    uvicorn.run(app, host=host_for_mode(mode), port=cfg.web_port)
 
 
 if __name__ == "__main__":

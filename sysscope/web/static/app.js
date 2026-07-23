@@ -96,6 +96,45 @@ async function loadNetwork() {
   }
 }
 
+async function loadAccess() {
+  const st = await fetch("/api/settings").then(r => r.json());
+  document.querySelectorAll(".access-btn").forEach(b => {
+    b.classList.toggle("on", b.dataset.mode === st.bind_mode);
+    b.onclick = () => setAccess(b.dataset.mode);
+  });
+  const urlEl = document.getElementById("access-url");
+  urlEl.textContent = (st.bind_mode === "lan" && st.lan_urls.length)
+    ? "→ " + st.lan_urls.join("  ") : "";
+}
+
+async function setAccess(mode) {
+  const cur = document.querySelector(".access-btn.on")?.dataset.mode;
+  if (mode === cur) return;
+  const isLocal = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
+  if (mode === "localhost" && !isLocal) {
+    if (!confirm("Vais desligar o acesso LAN. Esta página (aberta por IP) vai deixar de responder. Continuar?")) return;
+  }
+  await fetch("/api/settings/bind", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bind_mode: mode }),
+  });
+  const urlEl = document.getElementById("access-url");
+  urlEl.textContent = "a reiniciar…";
+  const deadline = Date.now() + 20000;
+  const poll = async () => {
+    if (Date.now() > deadline) {
+      urlEl.textContent = "reinício demorado — recarrega a página manualmente";
+      return;
+    }
+    try {
+      const r = await fetch("/api/settings", { cache: "no-store" });
+      if (r.ok) { location.reload(); return; }
+    } catch (e) { /* servidor ainda a reiniciar */ }
+    setTimeout(poll, 1000);
+  };
+  setTimeout(poll, 2000);
+}
+
 function connectWs() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
@@ -112,6 +151,7 @@ async function init() {
   await loadIncidents();
   await loadServices();
   await loadNetwork();
+  await loadAccess();
   connectWs();
   setInterval(loadIncidents, 10000);
   setInterval(loadServices, 5000);

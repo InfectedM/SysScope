@@ -38,3 +38,9 @@ th { color: var(--muted); font-weight: 500; }
 td.culprit { color: var(--accent-soft); font-weight: 600; }
 #containers-table td:nth-child(2), #net-table td { font-variant-numeric: tabular-nums; }
 h3 { font-weight: 600; }
+#access-control { margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.access-label { color: var(--muted); font-size: 13px; }
+.access-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.access-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.access-url { color: var(--accent-soft); font-size: 13px; }
