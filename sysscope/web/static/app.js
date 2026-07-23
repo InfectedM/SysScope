@@ -17,6 +17,8 @@ function fmtTime(ts) {
 
 let diskInfo = {};
 let lastDisks = [];
+const _spark = {};       // disco -> instância uPlot
+let _sparkData = {};     // disco -> [ts[], total_bps[]]
 
 async function loadDiskInfo() {
   try {
@@ -72,8 +74,52 @@ function renderDisks(disks) {
       <div class="used-by">
         <div class="used-by-label">em uso por</div>
         <div class="app-chips">${chips}</div>
-      </div>`;
+      </div>
+      <div class="spark" id="spark-${d.disk}"></div>`;
     el.appendChild(card);
+  }
+  drawSparks();
+}
+
+// Sparkline de throughput total (leitura+escrita) por disco, últimos ~10 min.
+// Os cartões são reconstruídos a cada tick do WebSocket, por isso os gráficos
+// são recriados a partir dos dados em cache (redesenho idêntico, sem cintilação).
+async function refreshSparkData() {
+  const since = Date.now() / 1000 - 600;
+  await Promise.all(lastDisks.map(async (d) => {
+    try {
+      const rows = await fetch(`/api/disks/${encodeURIComponent(d.disk)}/samples?since=${since}`)
+        .then((r) => r.json());
+      _sparkData[d.disk] = [
+        rows.map((r) => r.ts),
+        rows.map((r) => (r.read_bps || 0) + (r.write_bps || 0)),
+      ];
+    } catch (e) { /* mantém dados anteriores */ }
+  }));
+  drawSparks();
+}
+
+function drawSparks() {
+  if (typeof uPlot === "undefined") return;
+  for (const d of lastDisks) {
+    const el = document.getElementById("spark-" + d.disk);
+    if (!el) continue;
+    if (_spark[d.disk]) { _spark[d.disk].destroy(); delete _spark[d.disk]; }
+    const data = _sparkData[d.disk];
+    if (!data || data[0].length < 2) { el.innerHTML = ""; continue; }
+    _spark[d.disk] = new uPlot({
+      width: el.clientWidth || 220,
+      height: 46,
+      cursor: { show: false },
+      legend: { show: false },
+      scales: { x: { time: true } },
+      axes: [{ show: false }, { show: false }],
+      series: [
+        {},
+        { stroke: "#a78bfa", width: 1.5, fill: "rgba(139,92,246,.18)",
+          points: { show: false } },
+      ],
+    }, data, el);
   }
 }
 
@@ -275,6 +321,7 @@ async function init() {
   const res = await fetch("/api/disks");
   renderDisks(await res.json());
   await loadDiskInfo();
+  await refreshSparkData();
   await loadIncidents();
   await loadServices();
   await loadNetwork();
@@ -288,6 +335,7 @@ async function init() {
   await loadPatterns();
   connectWs();
   setInterval(loadDiskInfo, 5000);
+  setInterval(refreshSparkData, 5000);
   setInterval(loadIncidents, 10000);
   setInterval(loadServices, 5000);
   setInterval(loadNetwork, 5000);

@@ -197,6 +197,9 @@ main { max-width: 1240px; margin: 0 auto; padding: 24px 24px 64px; }
 
 .used-by { margin-top: 12px; }
 .used-by .used-by-label { color: var(--faint); font-size: 11px; margin-bottom: 6px; }
+.disk-card .spark { height: 46px; margin-top: 12px; }
+.disk-card .spark:empty { display: none; }
+.disk-card .spark canvas { background: transparent; }
 .app-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .app-chip {
   background: rgba(139, 92, 246, .12); color: var(--accent-soft);
