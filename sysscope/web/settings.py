@@ -19,9 +19,10 @@ _VALID = {"localhost", "lan"}
 def read_bind_mode(path: str) -> str:
     try:
         with open(path) as f:
-            mode = json.load(f).get("bind_mode")
+            data = json.load(f)
     except (OSError, ValueError):
         return "localhost"
+    mode = data.get("bind_mode") if isinstance(data, dict) else None
     return mode if mode in _VALID else "localhost"
 
 

@@ -24,6 +24,12 @@ def test_invalid_stored_value_defaults_localhost(tmp_path):
     assert s.read_bind_mode(str(p)) == "localhost"
 
 
+def test_non_object_json_defaults_localhost(tmp_path):
+    for content in ("null", "5", '"lan"', "[1,2,3]", "true"):
+        p = tmp_path / "x.json"; p.write_text(content)
+        assert s.read_bind_mode(str(p)) == "localhost"
+
+
 def test_write_rejects_invalid_mode(tmp_path):
     with pytest.raises(ValueError):
         s.write_bind_mode(str(tmp_path / "z.json"), "wan")
